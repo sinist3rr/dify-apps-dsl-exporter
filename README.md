@@ -12,8 +12,8 @@ This Python project allows you to download DSL files for all apps from the Dify 
 1. Clone the repository:
 
 ```bash
-$ git clone https://github.com/yourusername/yml-exporter.git
-$ cd yml-exporter
+$ git clone https://github.com/sattosan/dify-apps-dsl-exporter.git
+$ cd dify-apps-dsl-exporter
 ```
 
 2. Install dependencies using Poetry:
