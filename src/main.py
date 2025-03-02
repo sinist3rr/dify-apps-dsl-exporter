@@ -151,9 +151,10 @@ async def download_yml_file(access_token, app, retries=3):
         for attempt in range(retries):
             response = await client.get(url, headers=headers)
             if response.status_code == 200:
+                dsl_data = response.json().get("data").encode("utf-8")
                 file_name = f"{DSL_FOLDER_PATH}/{app_name}.yml"
                 with open(file_name, "wb") as file:
-                    file.write(response.content)
+                    file.write(dsl_data)
                 print(f"Downloaded: {file_name}")
                 return
             else:
