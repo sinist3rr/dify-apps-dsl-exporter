@@ -152,7 +152,8 @@ async def download_yml_file(access_token, app, retries=3):
             response = await client.get(url, headers=headers)
             if response.status_code == 200:
                 dsl_data = response.json().get("data").encode("utf-8")
-                file_name = f"{DSL_FOLDER_PATH}/{app_name}.yml"
+                replace_app_name = replace_appname(app_name)
+                file_name = f"{DSL_FOLDER_PATH}/{replace_app_name}.yml"
                 with open(file_name, "wb") as file:
                     file.write(dsl_data)
                 print(f"Downloaded: {file_name}")
@@ -164,6 +165,16 @@ async def download_yml_file(access_token, app, retries=3):
                 await asyncio.sleep(0.5)  # Wait before retrying
 
     raise Exception("Failed to fetch app list.")
+
+
+def replace_appname(app_name):
+    """
+    Replace the app name.
+
+    :param app_name: The original app name
+    :return: The modified app name
+    """
+    return app_name.replace("/", "-")
 
 
 async def main():
