@@ -21,6 +21,39 @@ MAX_CONCURRENT_TASKS = 3
 semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
 
 
+async def execute_api(
+    url: str,
+    access_token: str | None = None,
+    params: dict[str, str] | None = None,
+    payload: dict[str, str] | None = None,
+    method_type: str = "GET",
+    retries: int = 3,
+) -> dict:
+    """
+    Execute an API request.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"} if access_token else None
+    async with semaphore:
+        for attempt in range(retries):
+            match method_type:
+                case "POST":
+                    response = await client.post(
+                        url, headers=headers, params=params, json=payload
+                    )
+                case "GET":
+                    response = await client.get(url, headers=headers, params=params)
+                case _:
+                    raise ValueError("Invalid method type")
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Attempt {attempt + 1} failed: {response.status_code} - {url}")
+                await asyncio.sleep(0.5)  # Wait before retrying
+
+    raise Exception(f"Failed to request api: {url}")
+
+
 async def login_and_get_token() -> str:
     """
     Log in and get the access token.
@@ -29,19 +62,14 @@ async def login_and_get_token() -> str:
     :raises Exception: If login fails
     """
     payload = {"email": EMAIL, "password": PASSWORD}
-    response = await client.post(f"{BASE_URL}/login", json=payload)
-
-    if response.status_code == 200:
-        data = response.json()
-        if data.get("result") == "success":
-            access_token = data["data"]["access_token"]
-            print("Access token obtained successfully")
-            return access_token
-
-        print("Login failed:", data.get("message", "Unknown error"))
+    url = f"{BASE_URL}/login"
+    response = await execute_api(url, payload=payload, method_type="POST")
+    if response.get("result") == "success":
+        access_token = response["data"]["access_token"]
+        print("Access token obtained successfully")
+        return access_token
     else:
-        print(f"Login API error: {response.status_code} - {response.text}")
-
+        print(f"Login API error: {response.get("result")} - {url}")
     raise Exception("Login failed")
 
 
@@ -58,20 +86,12 @@ async def fetch_app_per_page(
     :return: The app data
     :raises Exception: If fetching app data fails
     """
-    params = {"page": page, "limit": limit}
-    headers = {"Authorization": f"Bearer {access_token}"}
-
-    for attempt in range(retries):
-        response = await client.get(f"{BASE_URL}/apps", headers=headers, params=params)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            print(
-                f"Attempt {attempt + 1} failed: {response.status_code} - {response.text}"
-            )
-            await asyncio.sleep(0.5)  # Wait before retrying
-
-    raise Exception("Failed to fetch app list.")
+    return await execute_api(
+        f"{BASE_URL}/apps",
+        access_token=access_token,
+        params={"page": page, "limit": limit},
+        method_type="GET",
+    )
 
 
 async def get_app_list(access_token: str) -> tuple[list, int]:
@@ -141,30 +161,16 @@ async def download_yml_file(access_token, app, retries=3):
     :param app: The app's information (ID and name)
     :param retries: The number of retry attempts (default: 3)
     """
-    app_id = app["id"]
-    app_name = app["name"]
-
-    headers = {"Authorization": f"Bearer {access_token}"}
-    url = f"{BASE_URL}/apps/{app_id}/export?include_secret=true"
+    url = f"{BASE_URL}/apps/{app["id"]}/export?include_secret=true"
     # Limit the maximum number of concurrent tasks using a semaphore
-    async with semaphore:
-        for attempt in range(retries):
-            response = await client.get(url, headers=headers)
-            if response.status_code == 200:
-                dsl_data = response.json().get("data").encode("utf-8")
-                replace_app_name = replace_appname(app_name)
-                file_name = f"{DSL_FOLDER_PATH}/{replace_app_name}.yml"
-                with open(file_name, "wb") as file:
-                    file.write(dsl_data)
-                print(f"Downloaded: {file_name}")
-                return
-            else:
-                print(
-                    f"Attempt {attempt + 1} failed: {response.status_code} - {app_name}"
-                )
-                await asyncio.sleep(0.5)  # Wait before retrying
+    response = await execute_api(url, access_token, method_type="GET")
+    dsl_data = response.get("data").encode("utf-8")
+    replace_app_name = replace_appname(app["name"])
+    file_name = f"{DSL_FOLDER_PATH}/{replace_app_name}.yml"
 
-    raise Exception("Failed to fetch app list.")
+    with open(file_name, "wb") as file:
+        file.write(dsl_data)
+    print(f"Downloaded: {file_name}")
 
 
 def replace_appname(app_name):
