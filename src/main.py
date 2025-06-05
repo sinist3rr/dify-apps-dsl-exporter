@@ -207,8 +207,29 @@ async def main():
         print("Mismatch in the number of apps.")
         return
 
+    # 4.0 Check unique app name
+    unique_apps = []
+    same_app_names = []
+    def check_uniquename():
+        # all unique app names
+        unique_names= set()
+        for x in app:
+            # find same name
+            if x['name'] in unique_names:
+                # modify name
+                modify_name = '【same】' + x['name'] + '-' + x['id'].split('-')[0]
+                unique_apps.append({"id": x['id'], "name": modify_name})
+                same_app_names.append(x['name'] + '->' + modify_name)
+            else:
+                unique_apps.append(x)
+                unique_names.add(x['name'])
+        # print notes
+        print(f"Same name app nums: {len(app)-len(unique_names)}, same name list : {same_app_names}")
+
+    check_uniquename()
+
     # 4. Download YML files for all apps concurrently
-    await download_yml_files(access_token, app)
+    await download_yml_files(access_token, unique_apps)
 
     # 5. Close the client after finishing
     await client.aclose()
