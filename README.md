@@ -33,3 +33,22 @@ DIFY_ORIGIN=http://localhost  # Or the Dify origin URL
 EMAIL=your-email@example.com # for Dify login
 PASSWORD=your-password # for Dify login
 ```
+
+## UseCase
+
+### Export ALL DSL Files
+```bash
+$ poetry run python src/export.py
+```
+
+### Import ALL DSL Files
+
+```bash
+$ poetry run python src/import.py
+```
+
+### Delete All DSL Files
+
+```bash
+$ poetry run python src/delete.py
+```

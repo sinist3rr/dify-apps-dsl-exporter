@@ -30,7 +30,15 @@ async def execute_api(
     retries: int = 3,
 ) -> dict:
     """
-    Execute an API request.
+    Execute an API request with retries and optional authorization.
+
+    :param url: Target API endpoint URL
+    :param access_token: Bearer token for authentication (optional)
+    :param payload: Request payload to send (for POST)
+    :param method_type: HTTP method (currently supports only 'POST')
+    :param retries: Number of retry attempts on failure
+    :return: Response body as a dictionary
+    :raises Exception: If all retry attempts fail
     """
     headers = {"Authorization": f"Bearer {access_token}"} if access_token else None
     async with semaphore:
@@ -56,10 +64,10 @@ async def execute_api(
 
 async def login_and_get_token() -> str:
     """
-    Log in and get the access token.
+    Log in to the Dify API and retrieve an access token.
 
-    :return: The obtained access token
-    :raises Exception: If login fails
+    :return: Access token string
+    :raises Exception: If login fails or API call fails
     """
     payload = {"email": EMAIL, "password": PASSWORD}
     url = f"{BASE_URL}/login"
@@ -77,29 +85,29 @@ async def fetch_app_per_page(
     access_token: str, page: int, limit: int, retries: int = 3
 ) -> dict:
     """
-    Fetch the list of apps per page.
+    Fetch a single page of app data from the Dify API.
 
-    :param access_token: The access token
-    :param page: The page number to fetch
-    :param limit: The number of items per page
-    :param retries: The number of retry attempts (default: 3)
-    :return: The app data
-    :raises Exception: If fetching app data fails
+    :param access_token: Access token for authentication
+    :param page: Page number to fetch
+    :param limit: Number of apps per page
+    :param retries: Number of retry attempts on failure
+    :return: Dictionary containing app data
     """
     return await execute_api(
         f"{BASE_URL}/apps",
         access_token=access_token,
         params={"page": page, "limit": limit},
         method_type="GET",
+        retries=retries,
     )
 
 
 async def get_app_list(access_token: str) -> tuple[list, int]:
     """
-    Get a list of all apps and the total number of apps.
+    Retrieve all apps available to the authenticated user.
 
-    :param access_token: The access token
-    :return: A tuple containing a list of app information and the total number of apps
+    :param access_token: Access token for authentication
+    :return: Tuple of (list of app info dictionaries, total number of apps)
     """
     app_list = []
     page = 1
@@ -132,9 +140,7 @@ async def get_app_list(access_token: str) -> tuple[list, int]:
 
 def create_dsl_folder():
     """
-    Create a folder to save the YML files.
-
-    If the folder already exists, it will be deleted and recreated.
+    Ensure a clean DSL folder by removing it if it exists and creating a new one.
     """
     if os.path.exists(DSL_FOLDER_PATH):
         shutil.rmtree(DSL_FOLDER_PATH)
@@ -143,23 +149,22 @@ def create_dsl_folder():
 
 async def download_yml_files(access_token: str, apps: list):
     """
-    Download YML files for each app concurrently.
+    Download YML configuration files for each app concurrently.
 
-    :param access_token: The access token
-    :param apps: A list of apps (with ID and name)
+    :param access_token: Access token for authentication
+    :param apps: List of apps with 'id' and 'name' fields
     """
     create_dsl_folder()  # Create folder to save YML files
     tasks = [asyncio.create_task(download_yml_file(access_token, app)) for app in apps]
     await asyncio.gather(*tasks)  # Run all download tasks concurrently
 
 
-async def download_yml_file(access_token, app, retries=3):
+async def download_yml_file(access_token, app):
     """
-    Download the YML file for a single app.
+    Download the YML configuration file for a single app and save it locally.
 
-    :param access_token: The access token
-    :param app: The app's information (ID and name)
-    :param retries: The number of retry attempts (default: 3)
+    :param access_token: Access token for authentication
+    :param app: Dictionary with 'id' and 'name' keys for the app
     """
     url = f"{BASE_URL}/apps/{app["id"]}/export?include_secret=true"
     # Limit the maximum number of concurrent tasks using a semaphore
@@ -170,24 +175,28 @@ async def download_yml_file(access_token, app, retries=3):
 
     with open(file_name, "wb") as file:
         file.write(dsl_data)
-    print(f"Downloaded: {file_name}")
+    print(f"✅ Downloaded: {file_name}")
 
 
 def replace_appname(app_name):
     """
-    Replace the app name.
+    Sanitize the app name by replacing slashes to make it file-system safe.
 
-    :param app_name: The original app name
-    :return: The modified app name
+    :param app_name: Original app name string
+    :return: Sanitized app name string
     """
     return app_name.replace("/", "-")
 
 
 async def main():
     """
-    Main processing: Obtain access token, get app list, and download YML files.
+    Main routine to export all apps as YML files.
 
-    First, obtain the access token and app list, then download YML files for each app.
+    Steps:
+    1. Authenticate and get an access token
+    2. Fetch all apps
+    3. Resolve name conflicts
+    4. Download YML for each app into the local folder
     """
     # 1. Get access token
     access_token = await login_and_get_token()
@@ -196,24 +205,23 @@ async def main():
         return
 
     # 2. Get the list of apps
-    app, app_num = await get_app_list(access_token)
-    print(f"Fetched app list: {app}")
+    apps, app_num = await get_app_list(access_token)
 
     # 3. Check download feasibility
-    if not app:
-        print("No apps found.")
+    if not apps:
+        print("❌ No apps found.")
         return
-    if len(app) != app_num:
-        print("Mismatch in the number of apps.")
+    if len(apps) != app_num:
+        print("❌ Mismatch in the number of apps.")
         return
 
-    # 4.0 Check unique app name
+    # 4. Check unique app name
     unique_apps = []
     same_app_names = []
     def check_uniquename():
         # all unique app names
         unique_names= set()
-        for x in app:
+        for x in apps:
             # find same name
             if x['name'] in unique_names:
                 # modify name
@@ -224,7 +232,7 @@ async def main():
                 unique_apps.append(x)
                 unique_names.add(x['name'])
         # print notes
-        print(f"Same name app nums: {len(app)-len(unique_names)}, same name list : {same_app_names}")
+        print(f"Same name app nums: {len(apps)-len(unique_names)}, same name list : {same_app_names}")
 
     check_uniquename()
 
