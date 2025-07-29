@@ -6,7 +6,12 @@ import httpx
 
 import dify_api
 
+from dotenv import load_dotenv
+
+load_dotenv()
 DSL_FOLDER_PATH = "./dsl"
+TAG_ENV = os.getenv("DSL_EXPORT_TAGS")
+TAG_FILTERS = [t.strip() for t in TAG_ENV.split(",") if t.strip()]
 
 
 def create_dsl_folder():
@@ -102,13 +107,22 @@ async def main():
     async with httpx.AsyncClient() as client:
         # 2. Get the list of apps
         apps, app_num = await dify_api.get_app_list(access_token, client)
+        # right after fetch — dump what we got
+        print(f"🔍 Found {len(apps)} apps:")
+        for a in apps:
+            print(f" • {a['name']}  (id={a['id']}), tags={a['tags'] or '‹no tags›'}")
+
+        if TAG_FILTERS:
+            filtered = [
+                app for app in apps
+                if set(TAG_FILTERS).intersection(set(app.get("tags", [])))
+            ]
+            print(f"🗂️ Exporting {len(filtered)}/{len(apps)} apps matching tags {TAG_FILTERS}")
+            apps = filtered
 
     # 3. Check download feasibility
     if not apps:
         print("❌ No apps found.")
-        return
-    if len(apps) != app_num:
-        print("❌ Mismatch in the number of apps.")
         return
 
     # 4. Check unique app name
