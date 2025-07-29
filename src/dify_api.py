@@ -135,9 +135,14 @@ async def get_app_list(access_token: str, client: httpx.AsyncClient) -> tuple[li
             break
 
         app_per_page = [
-            {"id": app.get("id"), "name": app.get("name")}
+        {
+            "id":   app.get("id"),
+            "name": app.get("name"),
+            "tags": [t.get("name") for t in app.get("tags", [])],
+        }
             for app in content.get("data", [])
         ]
+
         app_list.extend(app_per_page)
         page += 1
 
