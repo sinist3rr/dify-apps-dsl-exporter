@@ -135,15 +135,9 @@ async def get_app_list(access_token: str, client: httpx.AsyncClient) -> tuple[li
             break
 
         app_per_page = [
-            {"id": app.get("id"), "name": app.get("name")}
-            for app in content.get("data", [])
-        ]
-
-        app_per_page = [
         {
             "id":   app.get("id"),
             "name": app.get("name"),
-            # assume Dify returns tags as list of objects with “name” field
             "tags": [t.get("name") for t in app.get("tags", [])],
         }
             for app in content.get("data", [])
