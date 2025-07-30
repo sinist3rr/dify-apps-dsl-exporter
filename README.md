@@ -32,17 +32,24 @@ $ cp .env.example .env
 DIFY_ORIGIN=http://localhost  # Or the Dify origin URL
 EMAIL=your-email@example.com # for Dify login
 PASSWORD=your-password # for Dify login
+DSL_EXPORT_TAGS=YOUR_TAG
 ```
 
 ## UseCase
 
-### Export ALL DSL Files
+### Export DSL Files filtered by tags
 ```bash
-$ poetry run python src/export.py
+$ docker run --rm \
+  --env-file .env \
+  -v "$(pwd)/dsl:/app/dsl" \
+  sinist3r/dify-apps-dsl-exporter:0.1 export
 ```
 
 ### Import ALL DSL Files
 
 ```bash
-$ poetry run python src/import.py
+$ docker run --rm \
+  --env-file .env \
+  -v "$(pwd)/dsl:/app/dsl" \
+  sinist3r/dify-apps-dsl-exporter:0.1 import
 ```
