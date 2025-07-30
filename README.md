@@ -46,9 +46,3 @@ $ poetry run python src/export.py
 ```bash
 $ poetry run python src/import.py
 ```
-
-### Delete All DSL Files
-
-```bash
-$ poetry run python src/delete.py
-```
