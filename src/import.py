@@ -6,6 +6,8 @@ import httpx
 
 import dify_api
 
+from typing import Optional
+
 DSL_FOLDER_PATH = "./dsl"
 
 
@@ -37,9 +39,13 @@ async def upload_yml_files(access_token: str, yml_files: list[str], client: http
     await asyncio.gather(*tasks)
 
 
-async def upload_yml_file(access_token: str, file_path: str, client: httpx.AsyncClient):
+async def upload_yml_file(
+    access_token: str,
+    file_path: str,
+    client: httpx.AsyncClient
+):
     """
-    Upload a single YML file to the Dify API.
+    Upload a single YML file to the Dify API, updating existing workflows if they exist.
 
     :param access_token: Access token for authentication
     :param file_path: Path to the YML file
@@ -49,6 +55,7 @@ async def upload_yml_file(access_token: str, file_path: str, client: httpx.Async
         print(f"❌ File not found: {file_path}")
         return
 
+    # Read YAML content
     with open(file_path, "r", encoding="utf-8") as file:
         yaml_content = file.read()
 
@@ -56,24 +63,49 @@ async def upload_yml_file(access_token: str, file_path: str, client: httpx.Async
         print(f"❌ Skipping empty file: {file_path}")
         return
 
-    response = await dify_api.import_app(access_token, yaml_content, client)
-    app_name = os.path.basename(file_path)
+    # Determine application name from file name
+    app_name = os.path.splitext(os.path.basename(file_path))[0]
+
+    # Fetch existing apps to find a matching one
+    try:
+        apps, _ = await dify_api.get_app_list(access_token, client)
+    except Exception as e:
+        print(f"❌ Failed to fetch app list: {e}")
+        return
+
+    # Match by name
+    match = next((a for a in apps if a["name"] == app_name), None)
+    app_id: Optional[str] = match["id"] if match else None
+
+    # Import (create or update)
+    try:
+        response = await dify_api.import_app(
+            access_token=access_token,
+            yaml_content=yaml_content,
+            client=client,
+            app_id=app_id
+        )
+    except Exception as e:
+        print(f"❌ Exception during import: {e}")
+        return
+
+    # Report result
     if response.get("status") == "completed":
-        print(f"✅ Imported: {app_name} -> App ID: {response.get('app_id')}")
+        updated = "Updated" if app_id else "Created"
+        print(f"✅ {updated}: {app_name} -> App ID: {response.get('app_id')}")
     else:
-        print(f"❌ Failed to import: {app_name} -> Error: {response.get('error', 'Unknown error')}")
+        error_msg = response.get("error", response.get("message", "Unknown error"))
+        print(f"❌ Failed to import {app_name}: {error_msg}")
 
 
 async def main():
-    async with httpx.AsyncClient() as client:
-        access_token = await dify_api.login_and_get_token(client)
-
     yml_files = get_dsl_files()
     if not yml_files:
         print("No YML files found to upload.")
         return
 
     async with httpx.AsyncClient() as client:
+        access_token = await dify_api.login_and_get_token(client)
         await upload_yml_files(access_token, yml_files, client)
 
 

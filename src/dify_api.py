@@ -3,6 +3,7 @@ import logging
 import os
 
 import httpx
+from typing import Optional
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -149,23 +150,6 @@ async def get_app_list(access_token: str, client: httpx.AsyncClient) -> tuple[li
     return app_list, app_num
 
 
-async def delete_app(access_token: str, app: dict, client: httpx.AsyncClient):
-    """
-    Delete a single app using its ID.
-
-    :param access_token: Access token for authentication
-    :param app: Dictionary with 'id' and 'name' keys
-    :param client: HTTP client for making requests
-    :return: None
-    """
-    url = f"{BASE_URL}/apps/{app['id']}"
-    try:
-        await execute_api(client, url, access_token=access_token, method_type="DELETE")
-        print(f"🗑️  Deleted: {app['name']} (ID: {app['id']})")
-    except Exception as e:
-        print(f"❌ Failed to delete {app['name']} (ID: {app['id']}): {e}")
-
-
 async def export_app(access_token: str, app_id: str, client: httpx.AsyncClient) -> bytes:
     """
     Export the app's DSL data as a bytes.
@@ -181,7 +165,7 @@ async def export_app(access_token: str, app_id: str, client: httpx.AsyncClient) 
     return response.get("data").encode("utf-8")
 
 
-async def import_app(access_token: str, yaml_content: str, client: httpx.AsyncClient) -> dict:
+async def import_app(access_token: str, yaml_content: str, client: httpx.AsyncClient, app_id: str | None = None,) -> dict:
     """
     Import an app using YAML content.
     :param access_token: Access token for authentication
@@ -190,8 +174,18 @@ async def import_app(access_token: str, yaml_content: str, client: httpx.AsyncCl
     :return: Response from the API
     """
     url = f"{BASE_URL}/apps/imports"
-    payload = {
+    # build the payload explicitly
+    payload: dict[str, str] = {
         "mode": "yaml-content",
-        "yaml_content": yaml_content
+        "yaml_content": yaml_content,
     }
-    return await execute_api(client, url, access_token, payload=payload, method_type="POST")
+    if app_id:
+        payload["app_id"] = app_id
+
+    return await execute_api(
+        client,
+        url,
+        access_token=access_token,
+        payload=payload,
+        method_type="POST",
+    )
