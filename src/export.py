@@ -20,9 +20,7 @@ def create_dsl_folder():
     """
     Ensure a clean DSL folder by removing it if it exists and creating a new one.
     """
-    if os.path.exists(DSL_FOLDER_PATH):
-        shutil.rmtree(DSL_FOLDER_PATH)
-    os.makedirs(DSL_FOLDER_PATH)
+    os.makedirs(DSL_FOLDER_PATH, exist_ok=True)
     logger.debug("Created DSL folder at %s", DSL_FOLDER_PATH)
 
 
