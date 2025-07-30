@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-
 import httpx
 from typing import Optional
 from dotenv import load_dotenv
@@ -61,7 +60,7 @@ async def execute_api(
             if method_type == "DELETE" and response.status_code == 204:
                 return {}
             else:
-                print(f"Attempt {attempt + 1} failed: {response.status_code} - {url}")
+                logger.warning("Attempt %d failed: %d - %s", attempt + 1, response.status_code, url)
                 await asyncio.sleep(0.5)
 
     raise Exception(f"API call failed after {retries} attempts: {url}")
@@ -80,10 +79,10 @@ async def login_and_get_token(client: httpx.AsyncClient) -> str:
     response = await execute_api(client, url, payload=payload, method_type="POST")
     if response.get("result") == "success":
         access_token = response["data"]["access_token"]
-        print("Access token obtained successfully")
+        logger.info("Access token obtained successfully")
         return access_token
     else:
-        print(f"Login API error: {response.get('result')} - {url}")
+        logger.error("❌ Login API error: %s - %s", response.get("result"), url)
     raise Exception("Login failed")
 
 
@@ -127,7 +126,7 @@ async def get_app_list(access_token: str, client: httpx.AsyncClient) -> tuple[li
         if page == 1:
             app_num = content.get("total", 0)
             max_page_num = app_num // limit + (app_num % limit > 0)
-            print(f"Total apps: {app_num}, Total pages: {max_page_num}")
+            logger.info("Total apps: %d, Total pages: %d", app_num, max_page_num)
 
         if app_num == 0:
             return [], 0
@@ -188,4 +187,25 @@ async def import_app(access_token: str, yaml_content: str, client: httpx.AsyncCl
         access_token=access_token,
         payload=payload,
         method_type="POST",
+    )
+
+async def publish_app(
+    access_token: str,
+    app_id: str,
+    client: httpx.AsyncClient
+) -> dict:
+    """
+    Publish a workflow app after import/update.
+    :param access_token: Bearer token for authentication
+    :param app_id: ID of the app/workflow to publish
+    :param client: httpx AsyncClient
+    :return: Response JSON from Dify
+    """
+    url = f"{BASE_URL}/apps/{app_id}/workflows/publish"
+    return await execute_api(
+        client,
+        url,
+        access_token=access_token,
+        payload={},
+        method_type="POST"
     )

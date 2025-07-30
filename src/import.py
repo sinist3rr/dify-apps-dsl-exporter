@@ -1,12 +1,14 @@
 import asyncio
 import glob
 import os
-
 import httpx
-
 import dify_api
-
+import logging
 from typing import Optional
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 DSL_FOLDER_PATH = "./dsl"
 
@@ -19,7 +21,7 @@ def get_dsl_files() -> list[str]:
     """
     yml_files = glob.glob(f"{DSL_FOLDER_PATH}/*.yml")
     if not yml_files:
-        print("No YML files found in ./dsl")
+        logger.error("❌ No YML files found in %s", DSL_FOLDER_PATH)
         return []
     return yml_files
 
@@ -52,7 +54,7 @@ async def upload_yml_file(
     :param client: An instance of httpx.AsyncClient
     """
     if not os.path.exists(file_path):
-        print(f"❌ File not found: {file_path}")
+        logger.error("❌ File not found: %s", file_path)
         return
 
     # Read YAML content
@@ -60,7 +62,7 @@ async def upload_yml_file(
         yaml_content = file.read()
 
     if not yaml_content:
-        print(f"❌ Skipping empty file: {file_path}")
+        logger.warning("Skipping empty file: %s", file_path)
         return
 
     # Determine application name from file name
@@ -70,7 +72,7 @@ async def upload_yml_file(
     try:
         apps, _ = await dify_api.get_app_list(access_token, client)
     except Exception as e:
-        print(f"❌ Failed to fetch app list: {e}")
+        logger.error("❌ Failed to fetch app list: %s", e)
         return
 
     # Match by name
@@ -86,22 +88,39 @@ async def upload_yml_file(
             app_id=app_id
         )
     except Exception as e:
-        print(f"❌ Exception during import: {e}")
+        logger.error("❌ Exception during import: %s", e)
         return
 
-    # Report result
+    # Report result and publish if successful
     if response.get("status") == "completed":
-        updated = "Updated" if app_id else "Created"
-        print(f"✅ {updated}: {app_name} -> App ID: {response.get('app_id')}")
+        # Determine if it was an update or a create
+        was_update = bool(app_id)
+        app_id_result = response.get("app_id")
+        action = "Updated" if was_update else "Created"
+        logger.info("✅ %s: %s -> App ID: %s", action, app_name, app_id_result)
+
+        # Publish the workflow
+        try:
+            pub_resp = await dify_api.publish_app(
+                access_token=access_token,
+                app_id=app_id_result,
+                client=client
+            )
+            if pub_resp.get("result") == "success":
+                logger.info("🚀 Published: %s", app_name)
+            else:
+                logger.error("❌ Publish indicated failure for %s: result=%s", app_name, pub_resp.get("result"))
+        except Exception as e:
+            logger.error("❌ Exception during publish: %s", e)
     else:
         error_msg = response.get("error", response.get("message", "Unknown error"))
-        print(f"❌ Failed to import {app_name}: {error_msg}")
+        logger.error("❌ Failed to import %s: %s", app_name, error_msg)
 
 
 async def main():
     yml_files = get_dsl_files()
     if not yml_files:
-        print("No YML files found to upload.")
+        logger.error("❌ No YML files found to upload.")
         return
 
     async with httpx.AsyncClient() as client:

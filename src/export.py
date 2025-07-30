@@ -1,12 +1,14 @@
 import asyncio
 import os
 import shutil
-
 import httpx
-
 import dify_api
-
+import logging
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 DSL_FOLDER_PATH = "./dsl"
@@ -21,6 +23,7 @@ def create_dsl_folder():
     if os.path.exists(DSL_FOLDER_PATH):
         shutil.rmtree(DSL_FOLDER_PATH)
     os.makedirs(DSL_FOLDER_PATH)
+    logger.debug("Created DSL folder at %s", DSL_FOLDER_PATH)
 
 
 async def download_yml_files(access_token: str, apps: list, client: httpx.AsyncClient):
@@ -50,7 +53,7 @@ async def download_yml_file(access_token: str, app: dict, client: httpx.AsyncCli
 
     with open(file_name, "wb") as file:
         file.write(dsl_data)
-    print(f"✅ Downloaded: {file_name}")
+    logger.info("✅ Downloaded: %s", file_name)
 
 
 def replace_appname(app_name):
@@ -101,37 +104,36 @@ async def main():
         # 1. Get access token
         access_token = await dify_api.login_and_get_token(client)
     if not access_token:
-        print("Failed to obtain access token.")
+        logger.error("❌ Failed to obtain access token.")
         return
 
     async with httpx.AsyncClient() as client:
         # 2. Get the list of apps
         apps, app_num = await dify_api.get_app_list(access_token, client)
-        # right after fetch — dump what we got
-        print(f"🔍 Found {len(apps)} apps:")
+        logger.info("🔍 Found %d apps:", len(apps))
         for a in apps:
-            print(f" • {a['name']}  (id={a['id']}), tags={a['tags'] or '‹no tags›'}")
+            logger.info(" • %s (id=%s), tags=%s", a["name"], a["id"], a.get("tags") or '‹no tags›')
 
         if TAG_FILTERS:
             filtered = [
                 app for app in apps
                 if set(TAG_FILTERS).intersection(set(app.get("tags", [])))
             ]
-            print(f"🗂️ Exporting {len(filtered)}/{len(apps)} apps matching tags {TAG_FILTERS}")
+            logger.info("🗂️ Exporting %d/%d apps matching tags %s", len(filtered), len(apps), TAG_FILTERS)
             apps = filtered
 
     # 3. Check download feasibility
     if not apps:
-        print("❌ No apps found.")
+        logger.error("❌ No apps found.")
         return
 
     # 4. Check unique app name
     unique_apps, same_app_names = make_unique_app_names(apps)
-    print(f"Same name app count: {len(apps) - len(unique_apps)}, renamed list: {same_app_names}")
+    logger.info("Same name app count: %d, renamed list: %s", len(apps) - len(unique_apps), same_app_names)
 
     async with httpx.AsyncClient() as client:
         # 5. Download YML files for all apps concurrently
-        print("Starting to download YML files...")
+        logger.info("Starting to download YML files...")
         await download_yml_files(access_token, unique_apps, client)
 
 
